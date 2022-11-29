@@ -1,18 +1,16 @@
 package org.springframework.boot.devtools.autoservices;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringApplicationRunListener;
 import org.springframework.boot.devtools.restart.Restarter;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.EnumerablePropertySource;
-import org.springframework.core.env.Environment;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
 
 public class TestcontainersSpringApplicationRunListener implements SpringApplicationRunListener {
 
@@ -20,13 +18,12 @@ public class TestcontainersSpringApplicationRunListener implements SpringApplica
         app.addInitializers(configurableApplicationContext -> {
             try {
                 Restarter.getInstance();
-            } catch (Throwable ignored) {
+            } catch (Exception ignored) {
                 // Restarter is not initialized, exiting
                 return;
             }
 
             ConfigurableEnvironment environment = configurableApplicationContext.getEnvironment();
-            environment.getPropertySources().addLast(new MongoDBPropertySource(environment));
             environment.getPropertySources().addLast(new PostgreSQLPropertySource(environment));
         });
     }
@@ -39,13 +36,10 @@ public class TestcontainersSpringApplicationRunListener implements SpringApplica
             super("org.testcontainers.postgresql");
             this.environment = environment;
 
-            addPropertyMapper("spring.r2dbc.url", it -> {
-                return String.format(
-                        "r2dbc:postgresql://%s:%d/test",
-                        it.getHost(),
-                        it.getMappedPort(5432)
-                );
-            });
+            addPropertyMapper("spring.r2dbc.url", it -> String.format(
+                    "r2dbc:postgresql://%s:%d/test",
+                    it.getHost(),
+                    it.getMappedPort(5432)));
             addPropertyMapper("spring.r2dbc.username", PostgreSQLContainer::getUsername);
             addPropertyMapper("spring.r2dbc.password", PostgreSQLContainer::getPassword);
             addPropertyMapper("spring.datasource.url", PostgreSQLContainer::getJdbcUrl);
@@ -55,25 +49,8 @@ public class TestcontainersSpringApplicationRunListener implements SpringApplica
 
         @Override
         protected PostgreSQLContainer<?> createContainer() {
-            String image = environment.getProperty("testcontainers.mongodb.postgres", "postgres:13.3");
+            String image = environment.getProperty("testcontainers.postgres.image", "postgres:15-alpine");
             return new PostgreSQLContainer<>(image)
-                    .withReuse(true);
-        }
-    }
-
-    private static class MongoDBPropertySource extends ContainerPropertySource<MongoDBContainer> {
-        private final Environment environment;
-
-        public MongoDBPropertySource(Environment environment) {
-            super("org.testcontainers.mongodb");
-            this.environment = environment;
-            addPropertyMapper("spring.data.mongodb.uri", MongoDBContainer::getReplicaSetUrl);
-        }
-
-        @Override
-        protected MongoDBContainer createContainer() {
-            String image = environment.getProperty("testcontainers.mongodb.image", "mongo:4.0.10");
-            return new MongoDBContainer(image)
                     .withReuse(true);
         }
     }
@@ -81,7 +58,8 @@ public class TestcontainersSpringApplicationRunListener implements SpringApplica
     /**
      * Base class for Testcontainers-based property sources
      */
-    private abstract static class ContainerPropertySource<T extends GenericContainer<?>> extends EnumerablePropertySource<T> {
+    private abstract static class ContainerPropertySource<T extends GenericContainer<?>>
+            extends EnumerablePropertySource<T> {
 
         private final Map<String, Function<T, Object>> propertyMappers = new HashMap<>();
 
@@ -119,9 +97,7 @@ public class TestcontainersSpringApplicationRunListener implements SpringApplica
                                 T result = createContainer();
                                 result.start();
                                 return result;
-                            }
-                    )
-            );
+                            }));
         }
     }
 }
